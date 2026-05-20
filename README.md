@@ -85,7 +85,7 @@ make destroy           # 全リソース撤去 (課金停止)
 合成フロー: `make deploy → seed-raw → build-features → sync → export → verify-export → destroy`
 
 ⚠️ **初回 `make sync` は約19〜21分**（Optimized Online Store の serving ノード初期プロビジョニング + 初回 materialize）。2 回目以降は数分。
-⚠️ **sync 完了直後は数分間 `fetchFeatureValues` が 404**（伝播遅延）。online 取得は数分おいてから。`app/export.py` は 404 を skip する。
+⚠️ **sync 完了直後は数分間 `fetchFeatureValues` が 404**（伝播遅延）。online 取得は数分おいてから。`app/feature_store/export.py` は 404 を skip する。
 
 ## 検証内容（実施済み）
 

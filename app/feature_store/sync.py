@@ -20,7 +20,7 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
-from app.auth import access_token as _access_token
+from app.common.auth import access_token as _access_token
 
 TIMEOUT_SEC = 1800
 POLL_SEC = 15

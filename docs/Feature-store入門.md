@@ -197,7 +197,7 @@ flowchart TB
 ## 7. あなたの ML ノウハウと結びつける（核心）
 
 ### 7.1 前処理 / 特徴量生成 = BigQuery SQL
-あなたが pandas/scikit-learn でやる前処理は、ここでは **BigQuery SQL**（[app/sql/build_features.sql](../app/sql/build_features.sql)）に対応します。
+あなたが pandas/scikit-learn でやる前処理は、ここでは **BigQuery SQL**（[app/data/sql/build_features.sql](../app/data/sql/build_features.sql)）に対応します。
 
 | 前処理の概念 | この SQL での対応 |
 |---|---|

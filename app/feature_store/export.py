@@ -24,7 +24,7 @@ from typing import Any
 
 from google.cloud import bigquery, storage
 
-from app.auth import access_token
+from app.common.auth import access_token
 
 HEADER = [
     "property_id",

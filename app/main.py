@@ -12,7 +12,8 @@ from __future__ import annotations
 import sys
 from collections.abc import Callable
 
-from app import build_features, export, seed, seed_raw, sync
+from app.data import build_features, seed, seed_raw
+from app.feature_store import export, sync
 
 COMMANDS: dict[str, Callable[[], None]] = {
     "seed": seed.run,

@@ -14,7 +14,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 構成:
 - `infra/terraform/` — BigQuery (dataset/table/view) + Feature Group/Feature×7 + Online Store(optimized)/Feature View + Artifact Registry + SA/IAM + Cloud Run jobs。Feature Store 系は `google-beta` provider。アドオンで `raw` dataset+4テーブル / GCS export bucket / Cloud Run jobs (seed-raw/build-features/feature-export) を追加。
-- `app/` — Cloud Run job アプリ。`main.py` が dispatch table でコマンド分岐。`seed`(固定投入)/`sync`(Feature View sync REST polling)/`seed-raw`+`build-features`(アドオン2: raw→SQL集計)/`export`(アドオン1: CSV/GCS出力)。SQL は `app/sql/build_features.sql`。共通 auth は `app/auth.py`。
+- `app/` — Cloud Run job アプリ。**責務ごとにサブパッケージ分割**: `main.py`(入口/dispatch table) / `app/common/`(auth) / `app/data/`(BigQuery 側: `seed`・`seed_raw`・`build_features` + `sql/build_features.sql`) / `app/feature_store/`(Feature Store 側: `sync`・`export`)。コマンドは `seed`(固定投入)/`sync`(Feature View sync)/`seed-raw`+`build-features`(raw→SQL集計)/`export`(CSV/GCS出力)。
 - `infra/Dockerfile` — 単一イメージ (Python 3.12 + uv)。
 - `Makefile` — `tf-init` / `deploy` / `seed` / `sync` / `seed-raw` / `build-features` / `export` / `verify-cli` / `verify-export` / `check` / `destroy`。
 
@@ -42,9 +42,9 @@ make verify-export  # GCS の出力 CSV を確認
 
 意図的に**採用しない**もの (学習対象外): Cloud Composer / Dataform / Vector Search / KServe / Elasticsearch / skew monitoring。Feature Store 中核 (FeatureGroup/Feature/FeatureView/Online Store/sync) に集中する。
 
-⚠️ **初回 `make sync` は約19〜21分かかる** (実測 2026-05-20)。Optimized Online Store の serving ノード(min2)初期プロビジョニング + 初回 materialize のため。2 回目以降は数分。`app/sync.py` の `TIMEOUT_SEC=1800` はこれを見込んだ値。所要時間の実測内訳は [docs/03_運用.md §5](docs/03_運用.md)。
+⚠️ **初回 `make sync` は約19〜21分かかる** (実測 2026-05-20)。Optimized Online Store の serving ノード(min2)初期プロビジョニング + 初回 materialize のため。2 回目以降は数分。`app/feature_store/sync.py` の `TIMEOUT_SEC=1800` はこれを見込んだ値。所要時間の実測内訳は [docs/03_運用.md §5](docs/03_運用.md)。
 
-⚠️ **sync 完了直後は数分間、`fetchFeatureValues` が全 entity 404**（serving ノードへの伝播遅延）。sync 完了 ≠ online 取得可。online 一括取得 (`make export` の `FETCH_SOURCE=online`) は数分おいてから。`app/export.py` は 404 を warn+skip してクラッシュを防ぐ。未 materialize の entity（全特徴量 NULL の行など）も 404 になりうる。
+⚠️ **sync 完了直後は数分間、`fetchFeatureValues` が全 entity 404**（serving ノードへの伝播遅延）。sync 完了 ≠ online 取得可。online 一括取得 (`make export` の `FETCH_SOURCE=online`) は数分おいてから。`app/feature_store/export.py` は 404 を warn+skip してクラッシュを防ぐ。未 materialize の entity（全特徴量 NULL の行など）も 404 になりうる。
 
 > gcloud SDK 563.x には `gcloud ai feature-*` が無いため Feature Store の CLI 確認は REST API ([scripts/verify_cli.sh](scripts/verify_cli.sh))。`make verify-cli` で実行。
 > online モードを使う場合: `gcloud run jobs execute feature-export --update-env-vars "^@^FETCH_SOURCE=online" --wait`（env 値にカンマを含む `ENTITY_KEYS` を渡すときはカスタム区切り `^@^` 必須）。
