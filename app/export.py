@@ -15,6 +15,7 @@ from __future__ import annotations
 import csv
 import json
 import os
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime
@@ -107,9 +108,17 @@ def _fetch_from_online(
     )
     rows: list[list[Any]] = []
     for key in _entity_keys(project_id):
-        resp = _request_json(
-            fetch_url, method="POST", token=token, payload={"data_key": {"key": key}}
-        )
+        try:
+            resp = _request_json(
+                fetch_url, method="POST", token=token, payload={"data_key": {"key": key}}
+            )
+        except urllib.error.HTTPError as exc:
+            # sync 直後は数分の伝播遅延で 404 になる / online store に未 materialize の
+            # entity も 404。ハードクラッシュさせず skip して処理を続ける。
+            if exc.code == 404:
+                print(f"    [warn] entity {key} は online store に未存在 (404) — skip")
+                continue
+            raise
         features = {
             f["name"]: _scalar(f.get("value") or {})
             for f in (resp.get("keyValues") or {}).get("features", [])

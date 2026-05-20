@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 現状
 
-**実装済み** (2026-05-20)。作業計画書 [docs/作業計画書.md](docs/作業計画書.md) に沿って Terraform + Cloud Run jobs + app を実装。詳細な流用元対応は [docs/参照実装マッピング.md](docs/参照実装マッピング.md)。
+**実装済み + 実 GCP 動作検証済み（本体 + アドオン1/2）** (2026-05-20 / mlops-dev-a)。作業計画書 [docs/作業計画書.md](docs/作業計画書.md) に沿って Terraform + Cloud Run jobs + app を実装し、`make deploy → seed-raw → build-features → sync → export(bq/online) → verify` を全 PASS で確認済み。詳細な流用元対応は [docs/参照実装マッピング.md](docs/参照実装マッピング.md)。検証結果は各 docs の §0 / 作業計画書 §14。
 
 構成:
 - `infra/terraform/` — BigQuery (dataset/table/view) + Feature Group/Feature×7 + Online Store(optimized)/Feature View + Artifact Registry + SA/IAM + Cloud Run jobs。Feature Store 系は `google-beta` provider。アドオンで `raw` dataset+4テーブル / GCS export bucket / Cloud Run jobs (seed-raw/build-features/feature-export) を追加。
@@ -42,9 +42,12 @@ make verify-export  # GCS の出力 CSV を確認
 
 意図的に**採用しない**もの (学習対象外): Cloud Composer / Dataform / Vector Search / KServe / Elasticsearch / skew monitoring。Feature Store 中核 (FeatureGroup/Feature/FeatureView/Online Store/sync) に集中する。
 
-⚠️ **初回 `make sync` は約21分かかる** (実測 2026-05-20)。Optimized Online Store の serving ノード(min2)初期プロビジョニング + 初回 materialize のため。2 回目以降は数分。`app/sync.py` の `TIMEOUT_SEC=1800` はこれを見込んだ値。所要時間の実測内訳は [docs/作業計画書.md §13](docs/作業計画書.md)。
+⚠️ **初回 `make sync` は約19〜21分かかる** (実測 2026-05-20)。Optimized Online Store の serving ノード(min2)初期プロビジョニング + 初回 materialize のため。2 回目以降は数分。`app/sync.py` の `TIMEOUT_SEC=1800` はこれを見込んだ値。所要時間の実測内訳は [docs/作業計画書.md §13](docs/作業計画書.md)。
+
+⚠️ **sync 完了直後は数分間、`fetchFeatureValues` が全 entity 404**（serving ノードへの伝播遅延）。sync 完了 ≠ online 取得可。online 一括取得 (`make export` の `FETCH_SOURCE=online`) は数分おいてから。`app/export.py` は 404 を warn+skip してクラッシュを防ぐ。未 materialize の entity（全特徴量 NULL の行など）も 404 になりうる。
 
 > gcloud SDK 563.x には `gcloud ai feature-*` が無いため Feature Store の CLI 確認は REST API ([scripts/verify_cli.sh](scripts/verify_cli.sh))。`make verify-cli` で実行。
+> online モードを使う場合: `gcloud run jobs execute feature-export --update-env-vars "^@^FETCH_SOURCE=online" --wait`（env 値にカンマを含む `ENTITY_KEYS` を渡すときはカスタム区切り `^@^` 必須）。
 
 git: この project 直下で `git init` 済み想定 (`/home/ubuntu/repos` 自体は git repo ではない)。
 
@@ -64,9 +67,11 @@ Vertex AI Feature Store
   └─ Online Store    … Feature View の同期先 (オンライン配信)
 ```
 
-特徴量カラム例 (README より): `property_id` (Entity ID), `rent`, `area_sqm`, `station_distance_minutes`, `building_age_years`, `floor`, `room_count`, `has_auto_lock`, `has_delivery_box`, `popularity_score`, `feature_timestamp`。
+**採用スキーマ** (`property_features_daily`、参照実装準拠): `event_date` (DATE/partition), `feature_timestamp` (TIMESTAMP), `property_id` (STRING / **Entity ID** / clustering), `rent` (INT64), `walk_min` (INT64), `age_years` (INT64), `area_m2` (FLOAT64), `ctr` (FLOAT64), `fav_rate` (FLOAT64), `inquiry_rate` (FLOAT64), `popularity_score` (FLOAT64)。Feature Group に登録する Feature は 7 個 (`rent`/`walk_min`/`age_years`/`area_m2`/`ctr`/`fav_rate`/`inquiry_rate`)。
 
-検証は 4 段階: ①BigQuery 側 (dataset/table/投入/SQL) → ②Feature Store 側 (Feature Group/View/Online Store 同期) → ③CLI 検証 (`gcloud` / `bq` で一覧・詳細) → ④GCP UI 検証 (コンソールでメタデータ確認)。
+> README 初版で例示した列 (`area_sqm` / `station_distance_minutes` / `floor` / `has_auto_lock` 等) は採用していない。稼働中の参照実装 [study-gcp-search-mlops-gke](../study-gcp-search-mlops-gke/) との整合を優先し上記スキーマを採用した。
+
+検証は 4 段階: ①BigQuery 側 (dataset/table/投入/SQL) → ②Feature Store 側 (Feature Group/View/Online Store 同期) → ③CLI 検証 (`bq` + Vertex AI REST。`gcloud ai feature-*` は SDK に無い) → ④GCP UI 検証 (コンソールでメタデータ確認)。全段検証済み (2026-05-20)。
 
 ## ワークスペース規約 (継承)
 
