@@ -199,6 +199,9 @@ resource "google_cloud_run_v2_job" "seed" {
   name     = "seed"
   location = var.region
 
+  # 学習リポなので make destroy で消せるようにする (provider default は true)。
+  deletion_protection = false
+
   template {
     template {
       service_account = google_service_account.job_sa.email
@@ -224,6 +227,9 @@ resource "google_cloud_run_v2_job" "seed" {
 resource "google_cloud_run_v2_job" "fv_sync" {
   name     = "fv-sync"
   location = var.region
+
+  # 学習リポなので make destroy で消せるようにする (provider default は true)。
+  deletion_protection = false
 
   template {
     template {
