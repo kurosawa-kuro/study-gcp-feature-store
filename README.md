@@ -2,6 +2,12 @@
 
 不動産物件のサンプルデータを題材に、BigQuery に蓄積した特徴量を Vertex AI Feature Store に登録し、CLI と GCP コンソール UI の両方から確認・検証する学習用プロジェクト。
 
+![alt text](docs/image/image.png)
+![alt text](docs/image/image-1.png)
+![alt text](docs/image/image-2.png)
+![alt text](docs/image/image-3.png)
+![alt text](docs/image/image-4.png)
+
 ## ステータス
 
 **✅ 実装済み + 実 GCP 動作検証済み（2026-05-20 / project `mlops-dev-a` / `asia-northeast1`）**

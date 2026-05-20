@@ -21,17 +21,16 @@
 機械学習で特徴量を扱うとき、Feature Store **無し**だとこうなりがちです。
 
 ```mermaid
-flowchart TB
-    subgraph NG["Feature Store が無い世界"]
-        direction TB
-        raw1[(BigQuery / DWH)]
-        train_fe["訓練用の特徴量計算<br/>(Python / SQL / notebook)"]
-        serve_fe["推論用の特徴量計算<br/>(別の人が別言語で再実装)"]
+graph TB
+    subgraph 課題 Feature Store が無い世界
+        raw1["BigQuery / DWH"]
+        train_fe["訓練用の特徴量計算 (Python/SQL)"]
+        serve_fe["推論用の特徴量計算 (別実装で再実装)"]
         model1["モデル訓練"]
         api1["推論API"]
         raw1 --> train_fe --> model1
         raw1 --> serve_fe --> api1
-        train_fe -.->|"定義がズレる = training-serving skew"| serve_fe
+        train_fe -.->|"定義がズレる: skew"| serve_fe
     end
 ```
 
@@ -46,15 +45,15 @@ flowchart TB
 Feature Store **有り**の世界:
 
 ```mermaid
-flowchart TB
-    raw2[(BigQuery / DWH)]
-    fedef["特徴量定義は1箇所<br/>(BQ SQL で計算)"]
-    fs["Feature Store<br/>(offline=BQ / online=低レイテンシKV)"]
+graph TB
+    raw2["BigQuery / DWH"]
+    fedef["特徴量定義は1箇所 (BQ SQL)"]
+    fs["Feature Store (offline=BQ / online=KV)"]
     model2["訓練 (offline 一括取得)"]
     api2["推論 (online 単一entity取得)"]
     raw2 --> fedef --> fs
-    fs -->|同じ定義| model2
-    fs -->|同じ定義| api2
+    fs -->|"同じ定義"| model2
+    fs -->|"同じ定義"| api2
 ```
 
 → **特徴量の定義・保存・配信を一元化**し、訓練と推論に**同じ値**を届ける。これが Feature Store の本質です。
@@ -66,18 +65,13 @@ flowchart TB
 あなたが知っている「前処理 → 訓練 → 評価 → 推論」の流れに重ねると、Feature Store は**前処理の出力を保管し、訓練と推論に配る層**です。
 
 ```mermaid
-flowchart LR
-    A["生データ<br/>(ログ / マスタ)"] --> B["前処理 / 特徴量生成<br/>(集計・欠損補完・期間集計)"]
+graph LR
+    A["生データ (ログ/マスタ)"] --> B["前処理/特徴量生成"]
     B --> FS["Feature Store"]
-    FS -->|"offline: 一括取得"| C["訓練"]
+    FS -->|"offline: 一括"| C["訓練"]
     C --> D["評価"]
-    FS -->|"online: 単一entity低レイテンシ"| E["推論 / serving"]
-    D -. 再学習 .-> C
-
-    classDef off fill:#e3f2fd,stroke:#1565c0;
-    classDef on fill:#fff3e0,stroke:#e65100;
-    class C,D off;
-    class E on;
+    FS -->|"online: 低レイテンシ"| E["推論/serving"]
+    D -.->|"再学習"| C
 ```
 
 - 青 = **offline 経路**（訓練・評価。大量データを BigQuery から）
@@ -106,17 +100,16 @@ Vertex AI Feature Store の用語は、あなたが知っている DB / キャ�
 概念の関係:
 
 ```mermaid
-flowchart TB
-    BQ[("BigQuery テーブル<br/>property_features_daily")]
+graph TB
+    BQ["BigQuery テーブル<br/>property_features_daily"]
     FG["Feature Group<br/>(offline スキーマ宣言)"]
-    FT["Feature × 7<br/>(列の定義)"]
+    FT["Feature x 7<br/>(列の定義)"]
     OS["Online Store<br/>(Redis 的 KV)"]
     FV["Feature View<br/>(materialize + 配信口)"]
-    LOOKUP{{"entity lookup<br/>key = property_id"}}
-
+    LOOKUP["entity lookup<br/>key = property_id"]
     BQ --> FG
     FG --> FT
-    BQ -->|sync で取り込み| FV
+    BQ -->|"sync で取り込み"| FV
     FV --> OS
     OS --> LOOKUP
 ```
@@ -130,14 +123,14 @@ flowchart TB
 Feature Store の肝は「**同じ特徴量を 2 つの形で持つ**」ことです。
 
 ```mermaid
-flowchart LR
-    subgraph OFF["offline 層 = 真実の源"]
-        BQ[("BigQuery<br/>全履歴・大量・分析向き")]
+graph LR
+    subgraph offline層 真実の源
+        BQ["BigQuery<br/>全履歴・大量・分析向き"]
     end
-    subgraph ON["online 層 = 配信"]
-        OS[("Online Store<br/>最新1件・低レイテンシ・KV")]
+    subgraph online層 配信
+        OS["Online Store<br/>最新1件・低レイテンシ・KV"]
     end
-    BQ -->|"sync (定期 / 手動)"| OS
+    BQ -->|"sync (定期/手動)"| OS
     BQ -->|"訓練: 一括 SELECT"| TRAIN["訓練データ"]
     OS -->|"推論: fetch key=property_id"| SERVE["推論"]
 ```
@@ -158,24 +151,26 @@ flowchart LR
 不動産物件 `property_features` を題材に、生データから online 取得までの全体像です。
 
 ```mermaid
-flowchart TB
-    subgraph SRC["生データ (BigQuery)"]
-        PM[("物件マスタ")]
-        LOG[("行動ログ<br/>検索 / PV / お気に入り")]
+graph TB
+    subgraph 生データ BigQuery
+        PM["物件マスタ"]
+        LOG["行動ログ<br/>検索 / PV / お気に入り"]
     end
-
     FE["特徴量生成<br/>BQ SQL: JOIN / 28日集計 / SAFE_DIVIDE"]
-    FD[("property_features_daily<br/>特徴量テーブル (offline 真実の源)")]
-    VW[["online_latest view<br/>(当日スライス)"]]
-    FG["Feature Group + Feature × 7<br/>(スキーマ宣言)"]
+    FD["property_features_daily<br/>特徴量テーブル (offline 真実の源)"]
+    VW["online_latest view<br/>(当日スライス)"]
+    FG["Feature Group + Feature x 7<br/>(スキーマ宣言)"]
     FV["Feature View"]
-    OS[("Online Store")]
+    OS["Online Store"]
     TRAIN["offline 取得: 訓練データ作成"]
     SERVE["online 取得: 推論 fetch"]
-
-    PM & LOG --> FE --> FD
+    PM --> FE
+    LOG --> FE
+    FE --> FD
     FD --> FG
-    FD --> VW -->|"sync"| FV --> OS
+    FD --> VW
+    VW -->|"sync"| FV
+    FV --> OS
     FD -->|"一括 SELECT"| TRAIN
     OS -->|"fetchFeatureValues"| SERVE
 ```
@@ -207,13 +202,15 @@ flowchart TB
 | 全件保持 (左外部結合) | `LEFT JOIN`（行動ゼロの物件も残す。例: p006） |
 
 ```mermaid
-flowchart LR
-    imp["impressions<br/>COUNT(search_log)"] --> ctr
-    pv["pv COUNT(pv_log)"] --> ctr["ctr = SAFE_DIVIDE(pv, imp)"]
+graph LR
+    imp["impressions COUNT(search_log)"] --> ctr["ctr = SAFE_DIVIDE(pv, imp)"]
+    pv["pv COUNT(pv_log)"] --> ctr
     fav["favorite COUNTIF"] --> favr["fav_rate"]
     inq["inquiry COUNTIF"] --> inqr["inquiry_rate"]
-    pm["property_master<br/>rent/area_m2..."] --> out[("property_features_daily")]
-    ctr & favr & inqr --> out
+    pm["property_master rent/area_m2"] --> out["property_features_daily"]
+    ctr --> out
+    favr --> out
+    inqr --> out
 ```
 
 ### 7.2 特徴量設計の型
@@ -225,8 +222,8 @@ flowchart LR
 訓練データは offline（BQ）から作ります。重要なのが **`feature_timestamp`（point-in-time）**:
 
 ```mermaid
-flowchart TB
-    label["教師ラベル<br/>(2026-05-01 にクリックされた)"]
+graph TB
+    label["教師ラベル<br/>(2026-05-01 にクリック)"]
     feat["その時点の特徴量を引く<br/>feature_timestamp が 2026-05-01 以前"]
     bad["NG: 最新(今日)の特徴量を使う<br/>未来の情報リーク"]
     label --> feat
@@ -239,16 +236,16 @@ flowchart TB
 serving は Online Store から `fetchFeatureValues(key=property_id)` で引きます。**訓練と推論で同じ特徴量定義（同じ SQL の出力）を共有**するため、skew が原理的に消えます。
 
 ```mermaid
-flowchart TB
-    subgraph BEFORE["NG: Feature Store 無し"]
-        d1[(データ)] --> t1["訓練の前処理 (実装A)"]
+graph TB
+    subgraph NG Feature Store 無し
+        d1["データ"] --> t1["訓練の前処理 (実装A)"]
         d1 --> s1["推論の前処理 (実装B)"]
         t1 -.->|"ズレる"| s1
     end
-    subgraph AFTER["OK: Feature Store 有り"]
-        d2[(データ)] --> def["特徴量定義 1 つ<br/>build_features.sql"]
-        def --> off["offline: 訓練"]
-        def --> on["online: 推論"]
+    subgraph OK Feature Store 有り
+        d2["データ"] --> fdef["特徴量定義 1 つ build_features.sql"]
+        fdef --> tr_off["offline: 訓練"]
+        fdef --> tr_on["online: 推論"]
     end
 ```
 
@@ -270,13 +267,13 @@ sequenceDiagram
     participant C as 取得クライアント
     FE->>BQ: 特徴量を書く
     C->>S: sync 実行
-    S->>OS: materialize (初回 ~19-21分)
+    S->>OS: materialize (初回 約19-21分)
     S-->>C: finalStatus 完了
     C->>OS: fetchFeatureValues
-    OS-->>C: NG: 404 (数分の伝播遅延)
+    OS-->>C: 404 (数分の伝播遅延)
     Note over C,OS: 数分待つ
     C->>OS: fetchFeatureValues
-    OS-->>C: OK: 200 値が返る
+    OS-->>C: 200 値が返る
 ```
 
 - → online 一括取得は **404 を graceful に skip / retry** すること。未 materialize の entity（全特徴量 NULL の行など）も 404 になりうる。
