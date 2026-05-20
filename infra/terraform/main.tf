@@ -260,3 +260,220 @@ resource "google_cloud_run_v2_job" "fv_sync" {
   }
   depends_on = [google_project_iam_member.job_sa_roles]
 }
+
+# =========================================================================
+# アドオン2: raw / master dataset + 4 テーブル (特徴量生成の入力)
+#   テーブルは Terraform 管理 schema。中身は seed-raw job が TRUNCATE+INSERT で投入。
+# =========================================================================
+resource "google_bigquery_dataset" "raw" {
+  dataset_id  = var.raw_dataset_id
+  location    = var.region
+  description = "アドオン2: 特徴量生成の入力となる raw / master テーブル"
+  depends_on  = [google_project_service.apis]
+}
+
+resource "google_bigquery_table" "property_master" {
+  dataset_id          = google_bigquery_dataset.raw.dataset_id
+  table_id            = "property_master"
+  deletion_protection = var.enable_deletion_protection
+  schema = jsonencode([
+    { name = "property_id", type = "STRING", mode = "REQUIRED" },
+    { name = "rent", type = "INT64", mode = "NULLABLE" },
+    { name = "walk_min", type = "INT64", mode = "NULLABLE" },
+    { name = "age_years", type = "INT64", mode = "NULLABLE" },
+    { name = "area_m2", type = "FLOAT64", mode = "NULLABLE" },
+    { name = "layout", type = "STRING", mode = "NULLABLE" },
+    { name = "city", type = "STRING", mode = "NULLABLE" },
+    { name = "ward", type = "STRING", mode = "NULLABLE" },
+  ])
+}
+
+resource "google_bigquery_table" "search_log" {
+  dataset_id          = google_bigquery_dataset.raw.dataset_id
+  table_id            = "search_log"
+  deletion_protection = var.enable_deletion_protection
+  time_partitioning {
+    type  = "DAY"
+    field = "timestamp"
+  }
+  clustering = ["property_id"]
+  schema = jsonencode([
+    { name = "search_id", type = "STRING", mode = "NULLABLE" },
+    { name = "property_id", type = "STRING", mode = "REQUIRED" },
+    { name = "query", type = "STRING", mode = "NULLABLE" },
+    { name = "rank", type = "INT64", mode = "NULLABLE" },
+    { name = "timestamp", type = "TIMESTAMP", mode = "REQUIRED" },
+  ])
+}
+
+resource "google_bigquery_table" "pv_log" {
+  dataset_id          = google_bigquery_dataset.raw.dataset_id
+  table_id            = "pv_log"
+  deletion_protection = var.enable_deletion_protection
+  time_partitioning {
+    type  = "DAY"
+    field = "timestamp"
+  }
+  clustering = ["property_id"]
+  schema = jsonencode([
+    { name = "property_id", type = "STRING", mode = "REQUIRED" },
+    { name = "user_id", type = "STRING", mode = "NULLABLE" },
+    { name = "timestamp", type = "TIMESTAMP", mode = "REQUIRED" },
+  ])
+}
+
+resource "google_bigquery_table" "favorite_log" {
+  dataset_id          = google_bigquery_dataset.raw.dataset_id
+  table_id            = "favorite_log"
+  deletion_protection = var.enable_deletion_protection
+  time_partitioning {
+    type  = "DAY"
+    field = "timestamp"
+  }
+  clustering = ["property_id"]
+  schema = jsonencode([
+    { name = "property_id", type = "STRING", mode = "REQUIRED" },
+    { name = "user_id", type = "STRING", mode = "NULLABLE" },
+    { name = "action", type = "STRING", mode = "REQUIRED", description = "favorite | inquiry" },
+    { name = "timestamp", type = "TIMESTAMP", mode = "REQUIRED" },
+  ])
+}
+
+# =========================================================================
+# アドオン1: 特徴量 CSV/GCS 出力先 bucket
+# =========================================================================
+resource "google_storage_bucket" "export" {
+  name                        = "${var.project_id}-feature-export-${var.region}"
+  location                    = var.region
+  uniform_bucket_level_access = true
+  force_destroy               = true # 学習用: make destroy で中の object ごと消す
+  depends_on                  = [google_project_service.apis]
+
+  lifecycle_rule {
+    condition {
+      age = 14
+    }
+    action {
+      type = "Delete"
+    }
+  }
+}
+
+resource "google_storage_bucket_iam_member" "export_admin" {
+  bucket = google_storage_bucket.export.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.job_sa.email}"
+}
+
+# =========================================================================
+# アドオン用 Cloud Run jobs (seed-raw / build-features / feature-export)
+# =========================================================================
+resource "google_cloud_run_v2_job" "seed_raw" {
+  name                = "seed-raw"
+  location            = var.region
+  deletion_protection = false
+
+  template {
+    template {
+      service_account = google_service_account.job_sa.email
+      max_retries     = 1
+      timeout         = "600s"
+      containers {
+        image = var.image
+        args  = ["seed-raw"]
+        env {
+          name  = "PROJECT_ID"
+          value = var.project_id
+        }
+        env {
+          name  = "REGION"
+          value = var.region
+        }
+      }
+    }
+  }
+  depends_on = [
+    google_project_iam_member.job_sa_roles,
+    google_bigquery_table.property_master,
+    google_bigquery_table.search_log,
+    google_bigquery_table.pv_log,
+    google_bigquery_table.favorite_log,
+  ]
+}
+
+resource "google_cloud_run_v2_job" "build_features" {
+  name                = "build-features"
+  location            = var.region
+  deletion_protection = false
+
+  template {
+    template {
+      service_account = google_service_account.job_sa.email
+      max_retries     = 1
+      timeout         = "600s"
+      containers {
+        image = var.image
+        args  = ["build-features"]
+        env {
+          name  = "PROJECT_ID"
+          value = var.project_id
+        }
+        env {
+          name  = "REGION"
+          value = var.region
+        }
+      }
+    }
+  }
+  depends_on = [
+    google_project_iam_member.job_sa_roles,
+    google_bigquery_table.property_features_daily,
+  ]
+}
+
+resource "google_cloud_run_v2_job" "feature_export" {
+  name                = "feature-export"
+  location            = var.region
+  deletion_protection = false
+
+  template {
+    template {
+      service_account = google_service_account.job_sa.email
+      max_retries     = 1
+      timeout         = "600s"
+      containers {
+        image = var.image
+        args  = ["export"]
+        env {
+          name  = "PROJECT_ID"
+          value = var.project_id
+        }
+        env {
+          name  = "REGION"
+          value = var.region
+        }
+        env {
+          name  = "FETCH_SOURCE"
+          value = "bq" # online にしたい場合は実行時に --update-env-vars FETCH_SOURCE=online
+        }
+        env {
+          name  = "EXPORT_BUCKET"
+          value = google_storage_bucket.export.name
+        }
+        env {
+          name  = "EXPORT_PREFIX"
+          value = "exports"
+        }
+        env {
+          name  = "FEATURE_ONLINE_STORE_ID"
+          value = var.feature_online_store_id
+        }
+        env {
+          name  = "FEATURE_VIEW_ID"
+          value = var.feature_view_id
+        }
+      }
+    }
+  }
+  depends_on = [google_storage_bucket_iam_member.export_admin]
+}

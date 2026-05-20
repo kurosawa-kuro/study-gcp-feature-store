@@ -20,20 +20,10 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
-import google.auth
-import google.auth.transport.requests
+from app.auth import access_token as _access_token
 
 TIMEOUT_SEC = 1800
 POLL_SEC = 15
-
-
-def _access_token() -> str:
-    creds, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
-    creds.refresh(google.auth.transport.requests.Request())
-    token = creds.token
-    if not token:
-        raise SystemExit("[error] failed to obtain access token")
-    return str(token)
 
 
 def _request_json(

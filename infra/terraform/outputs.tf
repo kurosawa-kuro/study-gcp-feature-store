@@ -27,3 +27,13 @@ output "job_service_account" {
   value       = google_service_account.job_sa.email
   description = "Cloud Run job 実行 SA"
 }
+
+output "raw_dataset" {
+  value       = google_bigquery_dataset.raw.dataset_id
+  description = "アドオン2: raw / master dataset"
+}
+
+output "export_bucket" {
+  value       = google_storage_bucket.export.name
+  description = "アドオン1: 特徴量 CSV/GCS 出力先 bucket"
+}

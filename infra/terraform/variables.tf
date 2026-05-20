@@ -16,6 +16,12 @@ variable "feature_mart_dataset_id" {
   default     = "feature_mart"
 }
 
+variable "raw_dataset_id" {
+  type        = string
+  description = "アドオン2: raw / master テーブルを置く BigQuery dataset"
+  default     = "raw"
+}
+
 variable "feature_online_store_id" {
   type        = string
   description = "Feature Online Store の ID"

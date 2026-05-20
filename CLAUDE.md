@@ -13,10 +13,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **実装済み** (2026-05-20)。作業計画書 [docs/作業計画書.md](docs/作業計画書.md) に沿って Terraform + Cloud Run jobs + app を実装。詳細な流用元対応は [docs/参照実装マッピング.md](docs/参照実装マッピング.md)。
 
 構成:
-- `infra/terraform/` — BigQuery (dataset/table/view) + Feature Group/Feature×7 + Online Store(optimized)/Feature View + Artifact Registry + SA/IAM + Cloud Run jobs (seed/fv-sync)。Feature Store 系は `google-beta` provider。
-- `app/` — Cloud Run job アプリ。`main.py` が `seed`/`sync` を分岐。`seed.py`=BigQuery へサンプル投入、`sync.py`=Feature View sync の REST polling。
+- `infra/terraform/` — BigQuery (dataset/table/view) + Feature Group/Feature×7 + Online Store(optimized)/Feature View + Artifact Registry + SA/IAM + Cloud Run jobs。Feature Store 系は `google-beta` provider。アドオンで `raw` dataset+4テーブル / GCS export bucket / Cloud Run jobs (seed-raw/build-features/feature-export) を追加。
+- `app/` — Cloud Run job アプリ。`main.py` が dispatch table でコマンド分岐。`seed`(固定投入)/`sync`(Feature View sync REST polling)/`seed-raw`+`build-features`(アドオン2: raw→SQL集計)/`export`(アドオン1: CSV/GCS出力)。SQL は `app/sql/build_features.sql`。共通 auth は `app/auth.py`。
 - `infra/Dockerfile` — 単一イメージ (Python 3.12 + uv)。
-- `Makefile` — `tf-init` / `deploy` (AR apply→build-push→残り apply) / `seed` / `sync` / `verify-cli` / `check` / `destroy`。
+- `Makefile` — `tf-init` / `deploy` / `seed` / `sync` / `seed-raw` / `build-features` / `export` / `verify-cli` / `verify-export` / `check` / `destroy`。
 
 主要コマンド:
 
@@ -24,11 +24,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 make tf-init        # terraform init
 make check          # ruff + terraform fmt -check + validate (GCP に触れない)
 make deploy         # AR apply → image build/push → 残り apply
-make seed           # Cloud Run job: BigQuery へサンプル投入
+make seed           # Cloud Run job: BigQuery へ固定サンプル投入 (quick 路線)
 make sync           # Cloud Run job: Feature View sync + 待機
 make verify-cli     # gcloud / bq でリソース確認
 make destroy        # 全リソース撤去
+
+# アドオン2 (raw → SQL 集計で特徴量生成。seed の現実路線):
+make seed-raw       # raw 4 テーブルへサンプル投入
+make build-features # raw → property_features_daily を SQL 生成
+# アドオン1 (Feature Store → CSV/GCS 出力):
+make export         # 特徴量取得 → CSV → GCS (FETCH_SOURCE 既定 bq、online は --update-env-vars で)
+make verify-export  # GCS の出力 CSV を確認
 ```
+
+アドオン実装計画: [docs/アドオン1実装計画.md](docs/アドオン1実装計画.md) / [docs/アドオン2実装計画.md](docs/アドオン2実装計画.md)。
+合成フロー: `make deploy → seed-raw → build-features → sync → export → verify-export → destroy`。
 
 意図的に**採用しない**もの (学習対象外): Cloud Composer / Dataform / Vector Search / KServe / Elasticsearch / skew monitoring。Feature Store 中核 (FeatureGroup/Feature/FeatureView/Online Store/sync) に集中する。
 
