@@ -32,6 +32,10 @@ make destroy        # 全リソース撤去
 
 意図的に**採用しない**もの (学習対象外): Cloud Composer / Dataform / Vector Search / KServe / Elasticsearch / skew monitoring。Feature Store 中核 (FeatureGroup/Feature/FeatureView/Online Store/sync) に集中する。
 
+⚠️ **初回 `make sync` は約21分かかる** (実測 2026-05-20)。Optimized Online Store の serving ノード(min2)初期プロビジョニング + 初回 materialize のため。2 回目以降は数分。`app/sync.py` の `TIMEOUT_SEC=1800` はこれを見込んだ値。所要時間の実測内訳は [docs/作業計画書.md §13](docs/作業計画書.md)。
+
+> gcloud SDK 563.x には `gcloud ai feature-*` が無いため Feature Store の CLI 確認は REST API ([scripts/verify_cli.sh](scripts/verify_cli.sh))。`make verify-cli` で実行。
+
 git: この project 直下で `git init` 済み想定 (`/home/ubuntu/repos` 自体は git repo ではない)。
 
 ## アーキテクチャ (データフロー)
