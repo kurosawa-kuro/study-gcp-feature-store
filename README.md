@@ -7,10 +7,10 @@
 **✅ 実装済み + 実 GCP 動作検証済み（2026-05-20 / project `mlops-dev-a` / `asia-northeast1`）**
 
 - 本体（BigQuery → Feature Group / Feature View / Online Store → CLI/UI 検証）: 検証済み
-- アドオン1（Feature Store → CSV/GCS 出力、bq / online 両モード）: 検証済み — [docs/アドオン1実装計画.md](docs/アドオン1実装計画.md)
-- アドオン2（BQ raw/master → SQL で特徴量テーブル生成）: 検証済み — [docs/アドオン2実装計画.md](docs/アドオン2実装計画.md)
+- アドオン1（Feature Store → CSV/GCS 出力、bq / online 両モード）: 検証済み
+- アドオン2（BQ raw/master → SQL で特徴量テーブル生成）: 検証済み
 
-IaC は Terraform、実行は Cloud Run jobs。詳細な作業記録・所要時間・検証結果は [docs/作業計画書.md](docs/作業計画書.md)。
+IaC は Terraform、実行は Cloud Run jobs。仕様は [docs/01_仕様書.md](docs/01_仕様書.md)、実装の詳細・流用元・検証結果は [docs/02_実装カタログ.md](docs/02_実装カタログ.md)、構築・運用・所要時間は [docs/03_運用.md](docs/03_運用.md)。
 
 ## 目的（学習ゴール）
 
@@ -111,8 +111,7 @@ make destroy           # 全リソース撤去 (課金停止)
 
 | ファイル | 内容 |
 |---|---|
-| [docs/作業計画書.md](docs/作業計画書.md) | 本体の設計・所要時間・検証結果 |
-| [docs/参照実装マッピング.md](docs/参照実装マッピング.md) | 流用元（study-gcp-search-mlops-gke）対応表 |
-| [docs/アドオン1.md](docs/アドオン1.md) / [docs/アドオン1実装計画.md](docs/アドオン1実装計画.md) | 後段: CSV/GCS 出力 |
-| [docs/アドオン2.md](docs/アドオン2.md) / [docs/アドオン2実装計画.md](docs/アドオン2実装計画.md) | 前段: BQ 内特徴量生成 |
+| [docs/01_仕様書.md](docs/01_仕様書.md) | 目的・アーキテクチャ・スキーマ・本体/アドオン仕様・スコープ |
+| [docs/02_実装カタログ.md](docs/02_実装カタログ.md) | リソース/コード構成・流用元マッピング・検証結果・設計判断 |
+| [docs/03_運用.md](docs/03_運用.md) | コマンド・フロー・所要時間・注意事項・teardown |
 | [CLAUDE.md](CLAUDE.md) | Claude Code 向けガイド |

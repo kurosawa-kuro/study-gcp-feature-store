@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 現状
 
-**実装済み + 実 GCP 動作検証済み（本体 + アドオン1/2）** (2026-05-20 / mlops-dev-a)。作業計画書 [docs/作業計画書.md](docs/作業計画書.md) に沿って Terraform + Cloud Run jobs + app を実装し、`make deploy → seed-raw → build-features → sync → export(bq/online) → verify` を全 PASS で確認済み。詳細な流用元対応は [docs/参照実装マッピング.md](docs/参照実装マッピング.md)。検証結果は各 docs の §0 / 作業計画書 §14。
+**実装済み + 実 GCP 動作検証済み（本体 + アドオン1/2）** (2026-05-20 / mlops-dev-a)。Terraform + Cloud Run jobs + app を実装し、`make deploy → seed-raw → build-features → sync → export(bq/online) → verify` を全 PASS で確認済み。仕様は [docs/01_仕様書.md](docs/01_仕様書.md)、実装の詳細・流用元・検証結果は [docs/02_実装カタログ.md](docs/02_実装カタログ.md)、運用は [docs/03_運用.md](docs/03_運用.md)。
 
 構成:
 - `infra/terraform/` — BigQuery (dataset/table/view) + Feature Group/Feature×7 + Online Store(optimized)/Feature View + Artifact Registry + SA/IAM + Cloud Run jobs。Feature Store 系は `google-beta` provider。アドオンで `raw` dataset+4テーブル / GCS export bucket / Cloud Run jobs (seed-raw/build-features/feature-export) を追加。
@@ -37,12 +37,12 @@ make export         # 特徴量取得 → CSV → GCS (FETCH_SOURCE 既定 bq、
 make verify-export  # GCS の出力 CSV を確認
 ```
 
-アドオン実装計画: [docs/アドオン1実装計画.md](docs/アドオン1実装計画.md) / [docs/アドオン2実装計画.md](docs/アドオン2実装計画.md)。
+アドオン仕様・実装・検証は [docs/01_仕様書.md](docs/01_仕様書.md) §6 / [docs/02_実装カタログ.md](docs/02_実装カタログ.md)。
 合成フロー: `make deploy → seed-raw → build-features → sync → export → verify-export → destroy`。
 
 意図的に**採用しない**もの (学習対象外): Cloud Composer / Dataform / Vector Search / KServe / Elasticsearch / skew monitoring。Feature Store 中核 (FeatureGroup/Feature/FeatureView/Online Store/sync) に集中する。
 
-⚠️ **初回 `make sync` は約19〜21分かかる** (実測 2026-05-20)。Optimized Online Store の serving ノード(min2)初期プロビジョニング + 初回 materialize のため。2 回目以降は数分。`app/sync.py` の `TIMEOUT_SEC=1800` はこれを見込んだ値。所要時間の実測内訳は [docs/作業計画書.md §13](docs/作業計画書.md)。
+⚠️ **初回 `make sync` は約19〜21分かかる** (実測 2026-05-20)。Optimized Online Store の serving ノード(min2)初期プロビジョニング + 初回 materialize のため。2 回目以降は数分。`app/sync.py` の `TIMEOUT_SEC=1800` はこれを見込んだ値。所要時間の実測内訳は [docs/03_運用.md §5](docs/03_運用.md)。
 
 ⚠️ **sync 完了直後は数分間、`fetchFeatureValues` が全 entity 404**（serving ノードへの伝播遅延）。sync 完了 ≠ online 取得可。online 一括取得 (`make export` の `FETCH_SOURCE=online`) は数分おいてから。`app/export.py` は 404 を warn+skip してクラッシュを防ぐ。未 materialize の entity（全特徴量 NULL の行など）も 404 になりうる。
 
