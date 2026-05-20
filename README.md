@@ -2,11 +2,37 @@
 
 不動産物件のサンプルデータを題材に、BigQuery に蓄積した特徴量を Vertex AI Feature Store に登録し、CLI と GCP コンソール UI の両方から確認・検証する学習用プロジェクト。
 
-![alt text](docs/image/image.png)
-![alt text](docs/image/image-1.png)
-![alt text](docs/image/image-2.png)
-![alt text](docs/image/image-3.png)
-![alt text](docs/image/image-4.png)
+## 図解で理解する Feature Store
+
+### ① 課題: Feature Store が無い世界
+
+![Feature Store が無い世界](docs/image/image.png)
+
+同じ特徴量を **訓練用（Python/SQL）と推論用（API 側で再実装）で二重に書く**ことになり、定義が少しずつズレる。これが **training/serving skew**（訓練と推論で特徴量の値が食い違う）の典型的な発生源。BigQuery という同じ源から出発しても、計算ロジックが 2 系統に分かれた時点で再現性が崩れる。
+
+### ② 解決: 特徴量定義を 1 箇所に集約する
+
+![Feature Store がある世界](docs/image/image-1.png)
+
+特徴量定義を **BQ SQL の 1 箇所**に固定し、Feature Store が `offline=BigQuery` / `online=KV` の 2 つの配信面を提供する。訓練（offline 一括取得）も推論（online 単一 entity 取得）も**同じ定義**を参照するため skew が原理的に発生しない。これが Feature Store を導入する最大の動機。
+
+### ③ ライフサイクルの中での位置づけ
+
+![MLOps ライフサイクル](docs/image/image-2.png)
+
+生データ → 前処理/特徴量生成 → **Feature Store** が中継点になり、そこから二手に分かれる。`offline: 一括` は訓練→評価→再学習のループへ、`online: 低レイテンシ` は推論/serving へ。Feature Store は「特徴量を一度作ったら両用途へ配る」ハブとして MLOps サイクルの中心に座る。
+
+### ④ 本プロジェクトのリソース連鎖
+
+![本プロジェクトの構成](docs/image/image-3.png)
+
+実際に構築するリソースの対応関係。BigQuery テーブル `property_features_daily` を起点に、**左系列（offline スキーマ宣言）** = Feature Group → Feature×7（列の定義）、**右系列（配信）** = Feature View（`sync` で BQ から materialize する配信口）→ Online Store（Redis 的 KV）→ `key = property_id` での entity lookup。左がスキーマ・右が実体配信、という二系統に分かれる点が要。
+
+### ⑤ 肝: 「同じ特徴量を 2 つの形で持つ」
+
+![offline と online の二面性](docs/image/image-4.png)
+
+Feature Store の本質は、**offline 層（BigQuery = 真実の源、全履歴・大量・分析向き）** と **online 層（Online Store = 最新 1 件・低レイテンシ・KV）** という 2 つの形で同じ特徴量を保持すること。両者は `sync`（定期/手動）で結ばれ、訓練は BQ への一括 SELECT、推論は online への `fetch key=property_id` で取得する。`make sync` / `make export` がまさにこの sync と 2 系統の取得を実機で再現している。
 
 ## ステータス
 
