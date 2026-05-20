@@ -143,6 +143,7 @@ make destroy           # 全リソース撤去 (課金停止)
 
 | ファイル | 内容 |
 |---|---|
+| [docs/Feature-store入門.md](docs/Feature-store入門.md) | 既知の技術スタック (PostgreSQL/Redis/前処理) から理解する入門解説 |
 | [docs/01_仕様書.md](docs/01_仕様書.md) | 目的・アーキテクチャ・スキーマ・本体/アドオン仕様・スコープ |
 | [docs/02_実装カタログ.md](docs/02_実装カタログ.md) | リソース/コード構成・流用元マッピング・検証結果・設計判断 |
 | [docs/03_運用.md](docs/03_運用.md) | コマンド・フロー・所要時間・注意事項・teardown |
